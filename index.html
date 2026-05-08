@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Master Pro</title>
+    <style>
+        :root { 
+            --p: #6366f1; --bg: #f1f5f9; --text: #1e293b;
+            --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+        }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 2rem; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); width: 100%; max-width: 500px; position: relative; }
+        .hidden { display: none !important; }
+        
+        /* Nav y Controles */
+        .nav { margin-bottom: 20px; display: flex; gap: 10px; }
+        input, button, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #e2e8f0; border-radius: 8px; box-sizing: border-box; font-size: 1rem; }
+        button { background: var(--p); color: white; border: none; cursor: pointer; font-weight: 600; }
+        button:disabled { background: #cbd5e1; cursor: not-allowed; opacity: 0.7; }
+        
+        /* Quiz Info */
+        .quiz-stats { display: flex; justify-content: space-between; background: #f8fafc; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; }
+        #resource-container { text-align: center; margin: 15px 0; min-height: 50px; }
+        .resource-preview { max-width: 100%; max-height: 200px; border-radius: 8px; }
+        
+        /* Botones de Opciones */
+        .opt-btn { background: white !important; color: var(--text) !important; border: 2px solid #e2e8f0 !important; text-align: left; transition: 0.2s; }
+        .opt-btn.wrong { border-color: var(--danger) !important; color: var(--danger) !important; background: #fef2f2 !important; }
+
+        /* Semáforo */
+        .traffic-light { display: flex; justify-content: center; gap: 15px; margin: 20px auto; padding: 15px; background: #333; border-radius: 50px; width: fit-content; }
+        .light { width: 50px; height: 50px; border-radius: 50%; background: #555; opacity: 0.2; }
+        .light.red.active { background: var(--danger); opacity: 1; box-shadow: 0 0 15px var(--danger); }
+        .light.yellow.active { background: var(--warning); opacity: 1; box-shadow: 0 0 15px var(--warning); }
+        .light.green.active { background: var(--success); opacity: 1; box-shadow: 0 0 15px var(--success); }
+        
+        .timer-badge { color: var(--p); font-family: monospace; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="nav" id="main-nav">
+        <button onclick="showView('view-home')" style="background:#64748b">Inicio</button>
+        <button onclick="showView('view-login')">Admin</button>
+    </div>
+
+    <section id="view-home">
+        <h1>Mini Quiz</h1>
+        <p>Responde 5 preguntas. Si fallas, puedes reintentar pero tu puntaje bajará en esa pregunta.</p>
+        <button onclick="startQuiz()" style="font-size: 1.2rem; padding: 20px;">¡Empezar Prueba!</button>
+    </section>
+
+    <section id="view-login" class="hidden">
+        <h2>Admin</h2>
+        <input type="text" id="user" placeholder="Usuario">
+        <input type="password" id="pass" placeholder="Password">
+        <button onclick="login()">Entrar</button>
+    </section>
+
+    <section id="view-admin" class="hidden">
+        <h3>Editor de Preguntas</h3>
+        <select id="q-index" onchange="loadQuestionToEdit()"><option value="0">P1</option><option value="1">P2</option><option value="2">P3</option><option value="3">P4</option><option value="4">P5</option></select>
+        <input type="text" id="q-text" placeholder="Pregunta">
+        <select id="q-type"><option value="text">Texto</option><option value="image">Imagen</option><option value="audio">Audio</option></select>
+        <input type="text" id="q-url" placeholder="URL Recurso">
+        <input type="text" id="opt0" placeholder="Correcta">
+        <input type="text" id="opt1" placeholder="Incorrecta 1">
+        <input type="text" id="opt2" placeholder="Incorrecta 2">
+        <button onclick="saveQuestion()" style="background:var(--success)">Guardar</button>
+    </section>
+
+    <section id="view-quiz" class="hidden">
+        <div class="quiz-stats">
+            <span>Pregunta: <span id="q-current">1</span>/5</span>
+            <span class="timer-badge">⏱ <span id="timer">00:00</span></span>
+        </div>
+        <div class="quiz-stats" style="margin-top:-10px; font-size: 0.8rem; color: var(--p);">
+            Puntaje Actual: <span id="q-score">0.0</span>
+        </div>
+        <h3 id="display-q-text"></h3>
+        <div id="resource-container"></div>
+        <div id="options-container"></div>
+    </section>
+
+    <section id="view-results" class="hidden">
+        <h2 style="text-align:center">Resultados</h2>
+        <div class="traffic-light">
+            <div id="light-red" class="light red"></div>
+            <div id="light-yellow" class="light yellow"></div>
+            <div id="light-green" class="light green"></div>
+        </div>
+        <div style="text-align:center">
+            <p style="font-size:1.5rem; margin:0;">Puntaje: <span id="final-score"></span> / 5.0</p>
+            <p>Tiempo total: <span id="final-time"></span></p>
+            <p id="result-message"></p>
+        </div>
+        <button onclick="showView('view-home')" style="background:#64748b; margin-top:20px;">Finalizar</button>
+    </section>
+</div>
+
+<script>
+    let quizData = JSON.parse(localStorage.getItem('nativoQuiz_v3')) || [
+        { text: "¿Qué logo es este?", type: "image", url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/HTML5_logo_and_wordmark.svg/120px-HTML5_logo_and_wordmark.svg.png", options: ["HTML5", "CSS3", "JS"], correct: "HTML5" },
+        { text: "Capital de Japón", type: "text", url: "", options: ["Tokio", "Kyoto", "Osaka"], correct: "Tokio" },
+        { text: "Sonido de...", type: "audio", url: "https://www.w3schools.com/html/horse.mp3", options: ["Caballo", "Gato", "Perro"], correct: "Caballo" },
+        { text: "2 + 2 x 0", type: "text", url: "", options: ["2", "0", "4"], correct: "2" },
+        { text: "Color de la esperanza", type: "text", url: "", options: ["Verde", "Rojo", "Azul"], correct: "Verde" }
+    ];
+
+    let currentStep = 0;
+    let totalScore = 0;
+    let currentQValue = 1.0; // Valor actual de la pregunta (baja si fallas)
+    let seconds = 0;
+    let timerInterval;
+
+    function showView(viewId) {
+        document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+        document.getElementById(viewId).classList.remove('hidden');
+        document.getElementById('main-nav').style.display = (viewId==='view-quiz'||viewId==='view-results') ? 'none' : 'flex';
+    }
+
+    function login() {
+        if(document.getElementById('user').value==='admin' && document.getElementById('pass').value==='1234') showView('view-admin');
+        else alert('Error');
+    }
+
+    // --- CRONÓMETRO ---
+    function startTimer() {
+        seconds = 0;
+        clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            seconds++;
+            let m = Math.floor(seconds / 60);
+            let s = seconds % 60;
+            document.getElementById('timer').innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        }, 1000);
+    }
+
+    // --- LÓGICA QUIZ ---
+    function startQuiz() {
+        currentStep = 0;
+        totalScore = 0;
+        startTimer();
+        showView('view-quiz');
+        renderQuestion();
+    }
+
+    function renderQuestion() {
+        currentQValue = 1.0; // Reset valor de pregunta
+        const q = quizData[currentStep];
+        document.getElementById('q-current').innerText = currentStep + 1;
+        document.getElementById('q-score').innerText = totalScore.toFixed(1);
+        document.getElementById('display-q-text').innerText = q.text;
+        
+        const resCont = document.getElementById('resource-container');
+        resCont.innerHTML = '';
+        if(q.type === 'image') resCont.innerHTML = `<img src="${q.url}" class="resource-preview">`;
+        if(q.type === 'audio') resCont.innerHTML = `<audio controls src="${q.url}"></audio>`;
+
+        const optCont = document.getElementById('options-container');
+        optCont.innerHTML = '';
+        
+        // Mezclar solo para visualización
+        const shuffled = [...q.options].sort(() => Math.random() - 0.5);
+        shuffled.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'opt-btn';
+            btn.innerText = opt;
+            btn.onclick = (e) => checkAnswer(opt, e.target);
+            optCont.appendChild(btn);
+        });
+    }
+
+    function checkAnswer(selected, btnElement) {
+        const correct = quizData[currentStep].correct;
+        
+        if(selected === correct) {
+            totalScore += currentQValue;
+            currentStep++;
+            if(currentStep < 5) renderQuestion();
+            else finishQuiz();
+        } else {
+            // Penalización
+            btnElement.disabled = true;
+            btnElement.classList.add('wrong');
+            currentQValue = Math.max(0.1, currentQValue - 0.4); // Baja 0.4 cada fallo (mínimo 0.1)
+            document.getElementById('q-score').innerText = totalScore.toFixed(1);
+        }
+    }
+
+    function finishQuiz() {
+        clearInterval(timerInterval);
+        showView('view-results');
+        document.getElementById('final-score').innerText = totalScore.toFixed(1);
+        document.getElementById('final-time').innerText = document.getElementById('timer').innerText;
+        
+        // Semáforo
+        document.querySelectorAll('.light').forEach(l => l.classList.remove('active'));
+        const msg = document.getElementById('result-message');
+        
+        if(totalScore >= 4.5) {
+            document.getElementById('light-green').classList.add('active');
+            msg.innerText = "¡Impresionante! Eres un experto.";
+        } else if(totalScore >= 3.0) {
+            document.getElementById('light-yellow').classList.add('active');
+            msg.innerText = "Bien hecho, pero puedes mejorar tu precisión.";
+        } else {
+            document.getElementById('light-red').classList.add('active');
+            msg.innerText = "Debes estudiar más el contenido.";
+        }
+    }
+
+    // Admin Helpers
+    function loadQuestionToEdit() {
+        const q = quizData[document.getElementById('q-index').value];
+        document.getElementById('q-text').value = q.text;
+        document.getElementById('q-type').value = q.type;
+        document.getElementById('q-url').value = q.url;
+        document.getElementById('opt0').value = q.options[0];
+        document.getElementById('opt1').value = q.options[1];
+        document.getElementById('opt2').value = q.options[2];
+    }
+
+    function saveQuestion() {
+        const idx = document.getElementById('q-index').value;
+        quizData[idx] = {
+            text: document.getElementById('q-text').value,
+            type: document.getElementById('q-type').value,
+            url: document.getElementById('q-url').value,
+            options: [document.getElementById('opt0').value, document.getElementById('opt1').value, document.getElementById('opt2').value],
+            correct: document.getElementById('opt0').value
+        };
+        localStorage.setItem('nativoQuiz_v3', JSON.stringify(quizData));
+        alert('Guardado');
+    }
+</script>
+</body>
+</html>
